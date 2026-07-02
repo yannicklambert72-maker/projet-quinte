@@ -2,9 +2,7 @@ name: Quinté - Cotes et Pronostics
 
 on:
   schedule:
-    # Pronostics presse : tous les jours à 11h30 UTC (13h30 Paris)
     - cron: '30 11 * * *'
-    # Captures cotes week-end : sam+dim toutes les 30 min de 11h à 20h UTC (13h-22h Paris)
     - cron: '0,30 11-20 * * 6,0'
   workflow_dispatch:
 
@@ -16,7 +14,6 @@ jobs:
     name: Pronostics Presse (quotidien 13h30)
     runs-on: ubuntu-latest
     if: github.event.schedule == '30 11 * * *' || github.event_name == 'workflow_dispatch'
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -38,7 +35,6 @@ jobs:
     name: Capture Cotes (week-end)
     runs-on: ubuntu-latest
     if: github.event.schedule == '0,30 11-20 * * 6,0'
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,39 +52,4 @@ jobs:
           git config user.email "actions@github.com"
           git add historique_cotes/*.csv
           git diff --staged --quiet || git commit -m "Cotes $(date +'%Y-%m-%d %H:%M')"
-          git pushname: Quinte du jour
-
-on:
-  schedule:
-    - cron: '30 11 * * *'   # 13h30 heure de Paris (été = UTC+2)
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  scraper:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Récupérer le code
-        uses: actions/checkout@v4
-
-      - name: Installer Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Installer les dépendances
-        run: pip install -r requirements.txt
-
-      - name: Lancer le scraper
-        run: python prono_presse.py
-
-      - name: Enregistrer le CSV dans le dépôt
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add historique/*.csv
-          git diff --staged --quiet || git commit -m "Ajout pronostics du $(date +'%Y-%m-%d')"
           git push
