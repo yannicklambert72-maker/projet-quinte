@@ -2,9 +2,7 @@ name: Quinté - Cotes et Pronostics
 
 on:
   schedule:
-    # Pronostics presse : tous les jours à 7h UTC (9h Paris)
     - cron: '0 7 * * *'
-    # Captures cotes : tous les jours toutes les 30 min de 6h à 20h UTC (8h-22h Paris)
     - cron: '0,30 6-20 * * *'
   workflow_dispatch:
 
@@ -17,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.schedule == '0 7 * * *' || github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
         with:
           python-version: '3.11'
       - name: Installer les dépendances
@@ -38,18 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.schedule == '0,30 6-20 * * *'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-python@v5.6.0
         with:
           python-version: '3.11'
       - name: Installer les dépendances
-        run: pip install -r requirements.txt
-      - name: Capturer les cotes si dans la fenêtre H-5h/H
-        run: python capter_cotes_auto.py
-      - name: Sauvegarder les cotes
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add historique_cotes/*.csv
-          git diff --staged --quiet || git commit -m "Cotes $(date +'%Y-%m-%d %H:%M UTC')"
-          git push
