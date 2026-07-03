@@ -2,8 +2,10 @@ name: Quinté - Cotes et Pronostics
 
 on:
   schedule:
+    # Pronostics presse : tous les jours à 11h30 UTC (13h30 Paris)
     - cron: '30 11 * * *'
-    - cron: '0,30 11-20 * * 6,0'
+    # Captures cotes : tous les jours toutes les 30 min de 11h à 20h UTC (13h-22h Paris)
+    - cron: '0,30 11-20 * * *'
   workflow_dispatch:
 
 permissions:
@@ -11,7 +13,7 @@ permissions:
 
 jobs:
   pronostics_presse:
-    name: Pronostics Presse (quotidien 13h30)
+    name: Pronostics Presse
     runs-on: ubuntu-latest
     if: github.event.schedule == '30 11 * * *' || github.event_name == 'workflow_dispatch'
     steps:
@@ -31,10 +33,10 @@ jobs:
           git diff --staged --quiet || git commit -m "Pronostics presse $(date +'%Y-%m-%d')"
           git push
 
-  cotes_weekend:
-    name: Capture Cotes (week-end)
+  cotes:
+    name: Capture Cotes
     runs-on: ubuntu-latest
-    if: github.event.schedule == '0,30 11-20 * * 6,0'
+    if: github.event.schedule == '0,30 11-20 * * *'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
