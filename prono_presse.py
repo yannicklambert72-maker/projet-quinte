@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime
 import pandas as pd
 import requests
@@ -19,25 +20,20 @@ print("Connexion au site...")
 response = requests.get(URL, headers=HEADERS, timeout=20)
 response.raise_for_status()
 print("Page téléchargée.")
-print("Taille de la page :", len(response.text), "caractères")
 
 soup = BeautifulSoup(response.text, "html.parser")
 
-# Cherche le bon tableau parmi tous
+# Cherche le bon tableau (plus de 5 lignes)
 tables = soup.find_all("table")
-print("Nombre de tableaux trouvés :", len(tables))
-
 table = None
-for i, t in enumerate(tables):
-    rows = t.find_all("tr")
-    print(f"Tableau {i+1} : {len(rows)} lignes")
-    if len(rows) > 5:
+for t in tables:
+    if len(t.find_all("tr")) > 5:
         table = t
-        print(f"→ Tableau {i+1} sélectionné")
         break
 
 if table is None:
-    raise Exception("Impossible de trouver le tableau des pronostics.")
+    print("Tableau non disponible pour l'instant.")
+    sys.exit(1)  # Code d'erreur 1 = réessayer plus tard
 
 rows = table.find_all("tr")
 data = []
@@ -47,7 +43,8 @@ for row in rows:
         data.append(cols)
 
 if len(data) < 2:
-    raise Exception("Le tableau est vide.")
+    print("Tableau vide pour l'instant.")
+    sys.exit(1)  # Code d'erreur 1 = réessayer plus tard
 
 header = data[0]
 df = pd.DataFrame(data[1:], columns=header)
@@ -56,10 +53,10 @@ date_jour = datetime.now().strftime("%Y-%m-%d")
 nom_fichier = os.path.join(DOSSIER_SORTIE, f"pronostics_presse_{date_jour}.csv")
 df.to_csv(nom_fichier, index=False, encoding="utf-8-sig")
 
-print("\n===================================")
-print("Pronostics récupérés avec succès")
-print("Date :", date_jour)
-print("Nombre de journaux :", len(df))
-print("Fichier :", nom_fichier)
-print("===================================\n")
+print(f"\n===================================")
+print(f"Pronostics récupérés avec succès")
+print(f"Date : {date_jour}")
+print(f"Nombre de journaux : {len(df)}")
+print(f"Fichier : {nom_fichier}")
+print(f"===================================\n")
 print(df.head())
