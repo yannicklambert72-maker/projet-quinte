@@ -5,57 +5,61 @@ import pandas as pd
 import re
 import os
 import time
-import sys
+from requests.exceptions import RequestException
+import pytz
 
 # ==========================
 # Configuration
 # ==========================
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0 Safari/537.36",
+    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
     "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Referer": "https://www.geny.com/",
-    "Cache-Control": "max-age=0",
+    "Referer": "https://www.google.com/"
 }
+
 DOSSIER_SORTIE = "historique_cotes"
 URL_GENY = "https://www.geny.com/reunions-courses-pmu"
 
-def telecharger(url, max_retries=3):
-    for tentative in range(max_retries):
+# ==========================
+# Fonction pour faire une requête avec retries exponentiels
+# ==========================
+def faire_requete(url, max_retries=5, initial_delay=30):
+    retry_delay = initial_delay
+    for attempt in range(max_retries):
         try:
-            time.sleep(2 + tentative * 3)  # attente croissante
             response = requests.get(url, headers=HEADERS, timeout=20)
-            if response.status_code == 429:
-                wait = 30 * (tentative + 1)
-                print(f"429 reçu, attente {wait}s avant retry...")
-                time.sleep(wait)
-                continue
-            response.raise_for_status()
-            return response
-        except requests.exceptions.HTTPError as e:
-            print(f"Tentative {tentative+1}/{max_retries} échouée : {e}")
-            if tentative == max_retries - 1:
-                raise
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 429:
+                print(f"[WARNING] 429 reçu pour {url}. Attente {retry_delay}s avant retry...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Délai exponentiel
+            else:
+                print(f"[ERROR] Code {response.status_code} pour {url}")
+                return None
+        except RequestException as e:
+            print(f"[ERROR] Erreur de requête pour {url} : {e}")
+            time.sleep(retry_delay)
+            retry_delay *= 2
+    print(f"[ERROR] Échec après {max_retries} tentatives pour {url}.")
     return None
 
 # ==========================
 # Étape 1 : Trouver le Quinté
 # ==========================
-print("Recherche du Quinté du jour...")
-response = telecharger(URL_GENY)
+print("[INFO] Recherche du Quinté du jour...")
+response = faire_requete(URL_GENY)
+if response is None:
+    print("[ERROR] Impossible de récupérer la page des réunions. Arrêt.")
+    exit(1)
 
 soup = BeautifulSoup(response.text, "html.parser")
 lien_quinte = soup.find("a", class_="btnQuinte", href=lambda h: h and "partants-pmu" in h)
 
 if lien_quinte is None:
-    print("Quinté+ non trouvé. Arrêt.")
-    sys.exit(0)
+    print("[ERROR] Quinté+ non trouvé. Arrêt.")
+    exit(0)
 
 url_quinte = "https://www.geny.com" + lien_quinte["href"]
 
@@ -77,75 +81,71 @@ if bloc_course:
             heure_depart_str = match.group(1)
 
 if not heure_depart_str:
-    print("Heure de départ non trouvée. Arrêt.")
-    sys.exit(0)
+    print("[ERROR] Heure de départ non trouvée. Arrêt.")
+    exit(0)
 
-print(f"Quinté trouvé : {nom_course} à {heure_depart_str}")
+print(f"[INFO] Quinté trouvé : {nom_course} à {heure_depart_str}")
 
 # ==========================
 # Étape 2 : Vérifier la fenêtre H-5h / H
 # ==========================
-maintenant = datetime.utcnow()
+tz_paris = pytz.timezone("Europe/Paris")
+maintenant = datetime.now(tz_paris)
 heure_depart = datetime.strptime(heure_depart_str, "%Hh%M").replace(
     year=maintenant.year,
     month=maintenant.month,
-    day=maintenant.day
+    day=maintenant.day,
+    tzinfo=tz_paris
 )
 
-# Heure d'été UTC+2, hiver UTC+1
-# On utilise une marge large : on soustrait 1h pour être sûr de ne pas rater
-heure_depart_utc = heure_depart - timedelta(hours=2)
+# Vérifie si on est dans la fenêtre H-5h / H
+if (maintenant < heure_depart - timedelta(hours=5)) or (maintenant > heure_depart):
+    print("[INFO] Hors fenêtre de capture (H-5h / H). Arrêt.")
+    exit(0)
 
-fenetre_debut = heure_depart_utc - timedelta(hours=5)
-fenetre_fin   = heure_depart_utc + timedelta(minutes=5)
-
-print(f"Fenêtre de capture : {fenetre_debut.strftime('%H:%M')} UTC → {fenetre_fin.strftime('%H:%M')} UTC")
-print(f"Heure actuelle     : {maintenant.strftime('%H:%M')} UTC")
-
-if not (fenetre_debut <= maintenant <= fenetre_fin):
-    print("Hors fenêtre de capture. Rien à faire.")
-    sys.exit(0)
-
-print("Dans la fenêtre → capture en cours...")
+print("[INFO] Fenêtre de capture valide → capture en cours...")
 
 # ==========================
 # Étape 3 : Capturer les cotes
 # ==========================
-response2 = telecharger(url_quinte)
+response2 = faire_requete(url_quinte)
+if response2 is None:
+    print("[ERROR] Impossible de récupérer la page du Quinté. Arrêt.")
+    exit(1)
 
 soup2 = BeautifulSoup(response2.text, "html.parser")
 table = soup2.find("table")
 
 if table is None:
-    print("Tableau introuvable. Arrêt.")
-    sys.exit(0)
+    print("[ERROR] Tableau introuvable. Arrêt.")
+    exit(0)
 
 rows = table.find_all("tr")
 date_jour = maintenant.strftime("%Y-%m-%d")
-heure_capture = (maintenant + timedelta(hours=2)).strftime("%H:%M")
+heure_capture = maintenant.strftime("%H:%M")
 data = []
 
 for row in rows[1:]:
     cols = [td.get_text(strip=True) for td in row.find_all("td")]
     if len(cols) == 15:
         data.append({
-            "date":          date_jour,
+            "date": date_jour,
             "heure_capture": heure_capture,
-            "course":        nom_course,
-            "depart":        heure_depart_str,
-            "numero":        cols[0],
-            "cheval":        cols[1].replace('\ue908', '').strip(),
-            "jockey":        cols[9],
-            "entraineur":    cols[10],
-            "musique":       cols[11],
-            "valeur":        cols[12],
-            "cote_pmu":      cols[13],
-            "cote_geny":     cols[14],
+            "course": nom_course,
+            "depart": heure_depart_str,
+            "numero": cols[0],
+            "cheval": cols[1].replace('\u200b', '').strip(),
+            "jockey": cols[9],
+            "entraineur": cols[10],
+            "musique": cols[11],
+            "valeur": cols[12],
+            "cote_pmu": cols[13],
+            "cote_geny": cols[14],
         })
 
 if not data:
-    print("Aucune donnée extraite.")
-    sys.exit(0)
+    print("[ERROR] Aucune donnée extraite.")
+    exit(0)
 
 # ==========================
 # Étape 4 : Sauvegarde CSV
@@ -164,7 +164,7 @@ else:
 df_final.to_csv(nom_fichier, index=False, encoding="utf-8-sig")
 
 print(f"\n===================================")
-print(f"Cotes capturées à {heure_capture} (Paris)")
-print(f"Chevaux : {len(data)}")
-print(f"Fichier : {nom_fichier}")
+print(f"[SUCCESS] Cotes capturées à {heure_capture} (Paris)")
+print(f"[SUCCESS] Chevaux : {len(data)}")
+print(f"[SUCCESS] Fichier : {nom_fichier}")
 print(f"===================================")
