@@ -2,34 +2,25 @@ name: Capture Cotes
 
 on:
   schedule:
-    - cron: '0,30 6-19 * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+    - cron: '0 * * * *'  # Exécute toutes les heures
+  workflow_dispatch:     # Permet de lancer manuellement
 
 jobs:
-  cotes:
-    name: Capture Cotes
+  capture:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.2.2
+      - name: Checkout repository
+        uses: actions/checkout@v4  # Version compatible Node.js 24
 
-      - uses: actions/setup-python@v5.6.0
+      - name: Set up Python
+        uses: actions/setup-python@v5  # Version compatible Node.js 24
         with:
           python-version: '3.11'
 
-      - name: Installer les dépendances
-        run: pip install -r requirements.txt
-
-      - name: Capturer les cotes
-        run: python capter_cotes_auto.py
-
-      - name: Sauvegarder les cotes
+      - name: Install dependencies
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          mkdir -p historique_cotes
-          git add historique_cotes/ || true
-          git diff --staged --quiet || git commit -m "Cotes $(date +'%Y-%m-%d %H:%M UTC')"
-          git push || true
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4 pandas pytz
+
+      - name: Run script
+        run: python capter_cotes_auto.py
