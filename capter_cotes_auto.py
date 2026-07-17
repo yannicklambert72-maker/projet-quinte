@@ -1,47 +1,68 @@
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import pandas as pd
 import re
 import os
 import time
-from requests.exceptions import RequestException
 import pytz
+import random
 
 # ==========================
 # Configuration
 # ==========================
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0 Safari/537.36",
-    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://www.google.com/"
-}
-
 DOSSIER_SORTIE = "historique_cotes"
 URL_GENY = "https://www.geny.com/reunions-courses-pmu"
 
 # ==========================
-# Fonction pour faire une requête avec retries exponentiels
+# Fonction pour configurer le driver Chrome
 # ==========================
-def faire_requete(url, max_retries=5, initial_delay=30):
-    retry_delay = initial_delay
+def configure_driver():
+    options = Options()
+    options.add_argument("--headless")  # Mode sans interface
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins-discovery")
+    options.add_argument("--disable-notifications")
+    options.add_argument("--disable-logging")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
+    return options
+
+# ==========================
+# Fonction pour obtenir le HTML avec selenium
+# ==========================
+def obtenir_html(url):
+    driver = None
+    try:
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=configure_driver())
+        driver.get(url)
+        time.sleep(random.uniform(5, 10))  # Délai aléatoire pour imiter un humain
+        return driver.page_source
+    except Exception as e:
+        print(f"[ERROR] Erreur avec Selenium : {e}")
+        return None
+    finally:
+        if driver:
+            driver.quit()
+
+# ==========================
+# Fonction pour faire une requête avec retries
+# ==========================
+def faire_requete(url, max_retries=3):
     for attempt in range(max_retries):
-        try:
-            response = requests.get(url, headers=HEADERS, timeout=20)
-            if response.status_code == 200:
-                return response
-            elif response.status_code == 429:
-                print(f"[WARNING] 429 reçu pour {url}. Attente {retry_delay}s avant retry...")
-                time.sleep(retry_delay)
-                retry_delay *= 2  # Délai exponentiel
-            else:
-                print(f"[ERROR] Code {response.status_code} pour {url}")
-                return None
-        except RequestException as e:
-            print(f"[ERROR] Erreur de requête pour {url} : {e}")
-            time.sleep(retry_delay)
-            retry_delay *= 2
+        html = obtenir_html(url)
+        if html:
+            return html
+        else:
+            print(f"[WARNING] Tentative {attempt + 1}/{max_retries} échouée pour {url}. Attente...")
+            time.sleep(random.uniform(15, 30))  # Délai aléatoire entre les retries
     print(f"[ERROR] Échec après {max_retries} tentatives pour {url}.")
     return None
 
@@ -49,12 +70,12 @@ def faire_requete(url, max_retries=5, initial_delay=30):
 # Étape 1 : Trouver le Quinté
 # ==========================
 print("[INFO] Recherche du Quinté du jour...")
-response = faire_requete(URL_GENY)
-if response is None:
+html = faire_requete(URL_GENY)
+if not html:
     print("[ERROR] Impossible de récupérer la page des réunions. Arrêt.")
     exit(1)
 
-soup = BeautifulSoup(response.text, "html.parser")
+soup = BeautifulSoup(html, "html.parser")
 lien_quinte = soup.find("a", class_="btnQuinte", href=lambda h: h and "partants-pmu" in h)
 
 if lien_quinte is None:
@@ -98,7 +119,6 @@ heure_depart = datetime.strptime(heure_depart_str, "%Hh%M").replace(
     tzinfo=tz_paris
 )
 
-# Vérifie si on est dans la fenêtre H-5h / H
 if (maintenant < heure_depart - timedelta(hours=5)) or (maintenant > heure_depart):
     print("[INFO] Hors fenêtre de capture (H-5h / H). Arrêt.")
     exit(0)
@@ -108,12 +128,12 @@ print("[INFO] Fenêtre de capture valide → capture en cours...")
 # ==========================
 # Étape 3 : Capturer les cotes
 # ==========================
-response2 = faire_requete(url_quinte)
-if response2 is None:
+html2 = faire_requete(url_quinte)
+if not html2:
     print("[ERROR] Impossible de récupérer la page du Quinté. Arrêt.")
     exit(1)
 
-soup2 = BeautifulSoup(response2.text, "html.parser")
+soup2 = BeautifulSoup(html2, "html.parser")
 table = soup2.find("table")
 
 if table is None:
