@@ -76,10 +76,21 @@ if not html:
     exit(1)
 
 soup = BeautifulSoup(html, "html.parser")
+
+# Sauvegarde du HTML brut pour diagnostic (utile en cas de blocage anti-bot)
+os.makedirs("debug", exist_ok=True)
+with open("debug/page_reunions.html", "w", encoding="utf-8") as f:
+    f.write(html)
+
 lien_quinte = soup.find("a", class_="btnQuinte", href=lambda h: h and "partants-pmu" in h)
 
 if lien_quinte is None:
     print("[ERROR] Quinté+ non trouvé. Arrêt.")
+    print(f"[DEBUG] Taille du HTML reçu : {len(html)} caractères")
+    print(f"[DEBUG] Titre de la page reçue : {soup.title.string if soup.title else 'N/A'}")
+    print(f"[DEBUG] Présence du mot 'Quinté' dans le HTML : {'Quinté' in html}")
+    print(f"[DEBUG] Présence du mot 'captcha'/'robot'/'cloudflare' : "
+          f"{[m for m in ['captcha','robot','cloudflare','Just a moment'] if m.lower() in html.lower()]}")
     exit(0)
 
 url_quinte = "https://www.geny.com" + lien_quinte["href"]
