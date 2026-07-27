@@ -123,6 +123,15 @@ if date_recue != date_attendue_jj_mm:
     print(f"[DEBUG] Titre de la page reçue : {soup.title.string if soup.title else 'N/A'}")
     texte_visible = soup.get_text(separator=" ", strip=True)
     print(f"[DEBUG] Premiers 500 caractères de texte visible : {texte_visible[:500]}")
+    signatures_antibot = [
+        "cf-mitigated", "cf-ray", "cf-chl", "datadome", "px-captcha",
+        "distil", "_px3", "checking your browser", "attention required",
+        "just a moment", "incapsula", "perimeterx", "akamai", "are you human",
+        "vérification", "access denied", "forbidden"
+    ]
+    trouvees = [s for s in signatures_antibot if s.lower() in html.lower()]
+    print(f"[DEBUG] Signatures anti-bot détectées : {trouvees if trouvees else 'aucune'}")
+    print(f"[DEBUG] Premiers 1000 caractères du HTML brut :\n{html[:1000]}")
     exit(1)
 
 print(f"[DEBUG] Date de la page confirmée : {date_recue}")
