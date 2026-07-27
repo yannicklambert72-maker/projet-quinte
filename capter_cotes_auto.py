@@ -2,6 +2,10 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import pandas as pd
@@ -45,7 +49,18 @@ def obtenir_html(url):
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=configure_driver())
         driver.get(url)
-        time.sleep(random.uniform(5, 10))  # Délai aléatoire pour imiter un humain
+        try:
+            # Attend que le corps de la vraie page Geny soit chargé (le titre h1
+            # "Quinté+/Réunions PMU" est présent sur toute page de réunions valide).
+            # Plus fiable qu'un sleep() aveugle, qui ne garantit pas la fin du chargement
+            # et peut capturer une page de challenge anti-bot encore en cours de résolution.
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.ID, "selectedDateValue"))
+            )
+        except TimeoutException:
+            print("[WARNING] L'élément 'selectedDateValue' n'est pas apparu après 20s "
+                  "(page de challenge anti-bot possible, ou structure de page différente).")
+        time.sleep(random.uniform(2, 4))  # petite marge pour le rendu final
         return driver.page_source
     except Exception as e:
         print(f"[ERROR] Erreur avec Selenium : {e}")
@@ -78,9 +93,8 @@ maintenant = datetime.now(tz_paris)
 date_jour = maintenant.strftime("%Y-%m-%d")
 
 # URL avec date explicite (évite un cache CDN qui pourrait servir une page périmée
-# sur l'URL générique sans date) + paramètre anti-cache.
-cache_buster = int(time.time())
-URL_GENY = f"https://www.geny.com/reunions-courses-pmu/_d{date_jour}?_cb={cache_buster}"
+# sur l'URL générique sans date).
+URL_GENY = f"https://www.geny.com/reunions-courses-pmu/_d{date_jour}"
 
 html = faire_requete(URL_GENY)
 if not html:
@@ -104,7 +118,11 @@ date_recue = input_date.get("value") if input_date else None
 if date_recue != date_attendue_jj_mm:
     print(f"[ERROR] Page reçue ne correspond pas à la date attendue "
           f"(attendu {date_attendue_jj_mm}, reçu {date_recue}). "
-          f"Cache/CDN probablement en cause. Arrêt.")
+          f"Cache/CDN/anti-bot probablement en cause. Arrêt.")
+    print(f"[DEBUG] Taille du HTML reçu : {len(html)} caractères")
+    print(f"[DEBUG] Titre de la page reçue : {soup.title.string if soup.title else 'N/A'}")
+    texte_visible = soup.get_text(separator=" ", strip=True)
+    print(f"[DEBUG] Premiers 500 caractères de texte visible : {texte_visible[:500]}")
     exit(1)
 
 print(f"[DEBUG] Date de la page confirmée : {date_recue}")
