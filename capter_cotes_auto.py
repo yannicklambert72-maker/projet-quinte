@@ -112,12 +112,16 @@ print(f"[INFO] Quinté trouvé : {nom_course} à {heure_depart_str}")
 # ==========================
 tz_paris = pytz.timezone("Europe/Paris")
 maintenant = datetime.now(tz_paris)
-heure_depart = datetime.strptime(heure_depart_str, "%Hh%M").replace(
+heure_depart_naive = datetime.strptime(heure_depart_str, "%Hh%M").replace(
     year=maintenant.year,
     month=maintenant.month,
     day=maintenant.day,
-    tzinfo=tz_paris
 )
+heure_depart = tz_paris.localize(heure_depart_naive)
+
+print(f"[DEBUG] Maintenant (Paris)    : {maintenant.strftime('%Y-%m-%d %H:%M %Z%z')}")
+print(f"[DEBUG] Départ course (Paris) : {heure_depart.strftime('%Y-%m-%d %H:%M %Z%z')}")
+print(f"[DEBUG] Fenêtre autorisée     : {(heure_depart - timedelta(hours=5)).strftime('%H:%M')} → {heure_depart.strftime('%H:%M')}")
 
 if (maintenant < heure_depart - timedelta(hours=5)) or (maintenant > heure_depart):
     print("[INFO] Hors fenêtre de capture (H-5h / H). Arrêt.")
