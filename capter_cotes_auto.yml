@@ -5,6 +5,9 @@ on:
     - cron: '0 * * * *'  # Exécute toutes les heures
   workflow_dispatch:     # Permet de lancer manuellement
 
+permissions:
+  contents: write
+
 jobs:
   capture:
     runs-on: ubuntu-latest
@@ -24,3 +27,12 @@ jobs:
 
       - name: Run script
         run: python capter_cotes_auto.py
+
+      - name: Commit et push des résultats
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add historique_cotes/*.csv
+          git diff --cached --quiet && echo "Aucun changement à committer" || git commit -m "Mise à jour des cotes ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+          git pull --rebase
+          git push
