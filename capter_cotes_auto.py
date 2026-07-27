@@ -15,7 +15,6 @@ import random
 # Configuration
 # ==========================
 DOSSIER_SORTIE = "historique_cotes"
-URL_GENY = "https://www.geny.com/reunions-courses-pmu"
 
 # ==========================
 # Fonction pour configurer le driver Chrome
@@ -31,6 +30,9 @@ def configure_driver():
     options.add_argument("--disable-logging")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--no-sandbox")
+    options.add_argument("--disk-cache-size=0")
+    options.add_argument("--media-cache-size=0")
+    options.add_argument("--incognito")
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36")
     return options
 
@@ -70,6 +72,16 @@ def faire_requete(url, max_retries=3):
 # Étape 1 : Trouver le Quinté
 # ==========================
 print("[INFO] Recherche du Quinté du jour...")
+
+tz_paris = pytz.timezone("Europe/Paris")
+maintenant = datetime.now(tz_paris)
+date_jour = maintenant.strftime("%Y-%m-%d")
+
+# URL avec date explicite (évite un cache CDN qui pourrait servir une page périmée
+# sur l'URL générique sans date) + paramètre anti-cache.
+cache_buster = int(time.time())
+URL_GENY = f"https://www.geny.com/reunions-courses-pmu/_d{date_jour}?_cb={cache_buster}"
+
 html = faire_requete(URL_GENY)
 if not html:
     print("[ERROR] Impossible de récupérer la page des réunions. Arrêt.")
@@ -81,6 +93,21 @@ soup = BeautifulSoup(html, "html.parser")
 os.makedirs("debug", exist_ok=True)
 with open("debug/page_reunions.html", "w", encoding="utf-8") as f:
     f.write(html)
+
+# Vérification que la page reçue correspond bien à la date attendue.
+# Le site expose la date sélectionnée dans un input caché : id="selectedDateValue"
+# au format JJ/MM/AAAA.
+date_attendue_jj_mm = maintenant.strftime("%d/%m/%Y")
+input_date = soup.find("input", id="selectedDateValue")
+date_recue = input_date.get("value") if input_date else None
+
+if date_recue != date_attendue_jj_mm:
+    print(f"[ERROR] Page reçue ne correspond pas à la date attendue "
+          f"(attendu {date_attendue_jj_mm}, reçu {date_recue}). "
+          f"Cache/CDN probablement en cause. Arrêt.")
+    exit(1)
+
+print(f"[DEBUG] Date de la page confirmée : {date_recue}")
 
 lien_quinte = soup.find("a", class_="btnQuinte", href=lambda h: h and "partants-pmu" in h)
 
@@ -121,8 +148,6 @@ print(f"[INFO] Quinté trouvé : {nom_course} à {heure_depart_str}")
 # ==========================
 # Étape 2 : Vérifier la fenêtre H-5h / H
 # ==========================
-tz_paris = pytz.timezone("Europe/Paris")
-maintenant = datetime.now(tz_paris)
 heure_depart_naive = datetime.strptime(heure_depart_str, "%Hh%M").replace(
     year=maintenant.year,
     month=maintenant.month,
@@ -156,7 +181,6 @@ if table is None:
     exit(0)
 
 rows = table.find_all("tr")
-date_jour = maintenant.strftime("%Y-%m-%d")
 heure_capture = maintenant.strftime("%H:%M")
 data = []
 
