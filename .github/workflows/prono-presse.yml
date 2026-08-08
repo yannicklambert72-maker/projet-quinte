@@ -2,10 +2,10 @@ name: Pronostics Presse
 
 on:
   schedule:
-    - cron: '0 1 * * *'    # 9h UTC
-    - cron: '0 2 * * *'   # 10h UTC
-    - cron: '0 3 * * *'   # 11h UTC
-    - cron: '0 4 * * *'   # 12h UTC
+    - cron: '0 4 * * *'    # 9h UTC
+    - cron: '0 6 * * *'   # 10h UTC
+    - cron: '0 8 * * *'   # 11h UTC
+    - cron: '0 10 * * *'   # 12h UTC
   workflow_dispatch:
 
 permissions:
